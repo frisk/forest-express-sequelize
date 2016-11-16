@@ -23,7 +23,8 @@ function PieStatGetter(model, params, opts) {
   }
 
   function getAggregateField() {
-    return params['aggregate_field'] || schema.idField;
+    var fieldName = params['aggregate_field'] || schema.idField;
+    return schema.name + '.' + fieldName;
   }
 
   function getFilters() {
@@ -32,8 +33,13 @@ function PieStatGetter(model, params, opts) {
 
     if (params.filters) {
       params.filters.forEach(function (filter) {
+        var field = filter.field;
+        if (field.indexOf(':') !== -1) {
+          field = '$' + field.replace(':', '.') + '$';
+        }
+
         var condition = {};
-        condition[filter.field] = new OperatorValueParser(opts).perform(model,
+        condition[field] = new OperatorValueParser(opts).perform(model,
           filter.field, filter.value);
         conditions.push(condition);
       });
@@ -41,6 +47,21 @@ function PieStatGetter(model, params, opts) {
 
     if (params.filterType) { where['$' + params.filterType] = conditions; }
     return where;
+  }
+
+  function getIncludes() {
+    var includes = [];
+    _.values(model.associations).forEach(function (association) {
+      if (['HasOne', 'BelongsTo'].indexOf(association.associationType) > -1) {
+        includes.push({
+          model: association.target,
+          as: association.associationAccessor,
+          attributes: []
+        });
+      }
+    });
+
+    return includes;
   }
 
   function getGroupBy() {
@@ -91,6 +112,7 @@ function PieStatGetter(model, params, opts) {
           'value'
         ]
       ],
+      include: getIncludes(),
       where: getFilters(),
       group: [getGroupBy()],
       order: 'value DESC'
